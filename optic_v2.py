@@ -9,6 +9,7 @@ S = Hash(default_value=0)
 L = Hash(default_value=0)
 LINK = Hash(default_value=0)
 metadata = Hash(default_value=0)
+contractdata = Hash()
 
 TAU = ForeignHash(foreign_contract='currency', foreign_name='balances')
 OPTIC = ForeignHash(foreign_contract='con_optic_lst001', foreign_name='balances')
