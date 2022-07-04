@@ -9,7 +9,9 @@ S = Hash(default_value=0)
 L = Hash(default_value=0)
 LINK = Hash(default_value=0)
 metadata = Hash(default_value=0)
+metadata_proposal = Hash()
 contractdata = Hash()
+multisig_data = Hash()
 
 TAU = ForeignHash(foreign_contract='currency', foreign_name='balances')
 OPTIC = ForeignHash(foreign_contract='con_optic_lst001', foreign_name='balances')
@@ -22,16 +24,16 @@ def seed():
     metadata['operator'] = ctx.caller
     metadata['fees_wallet'] = ctx.caller
     metadata['initial_offer'] = 40_000_000
-    metadata['base_pool'] = 50_000_000
-    metadata['boost_pool'] = 200_000_000
+    contractdata['base_pool'] = 50_000_000
+    contractdata['boost_pool'] = 200_000_000
     metadata['lens_factor'] = 0.0205
-    metadata['xoptic_supply'] = 203_000_000
-    metadata['optic_in_pool'] = 203_000_000
-    metadata['optic_staked'] = 0
-    metadata['stau_farm'] = 0
-    metadata['xoptic_pledge'] = 0
-    metadata['stau_staked'] = 0
-    metadata['stau_farm'] = 0
+    contractdata['xoptic_supply'] = 203_000_000
+    contractdata['optic_in_pool'] = 203_000_000
+    contractdata['optic_staked'] = 0
+    contractdata['stau_farm'] = 0
+    contractdata['xoptic_pledge'] = 0
+    contractdata['stau_staked'] = 0
+    contractdata['stau_farm'] = 0
     metadata['xoptic_ratio'] = 1
     metadata['block_emergency'] = False
     metadata['rewards_fees'] = decimal('0.1')
@@ -40,6 +42,8 @@ def seed():
     metadata['max_lens'] = 100
     metadata['instant_burn'] = decimal('0.03')
     metadata['nft_contract'] = 'con_optic_nft_gallery'
+
+    multisig_data['addresses'] = ['address1here','address2here','address3here'] #FILL IN ADDRESSES HERE
 
 
 @export
@@ -97,15 +101,15 @@ def stake(amount: float):
     user = ctx.caller
     assert amount > 0, 'You must stake something.'
     assert OPTIC[user] >= amount, 'Not enough coins to stake!'
-    X_SUPPLY = metadata['xoptic_supply']
-    OPTIC_IN_POOL = metadata['optic_in_pool']
+    X_SUPPLY = contractdata['xoptic_supply']
+    OPTIC_IN_POOL = contractdata['optic_in_pool']
     RECEIVED = amount / (OPTIC_IN_POOL + amount) * X_SUPPLY
     con_optic_lst001.transfer_from(amount, metadata['operator'], user)
     con_xoptic_lst001.transfer_from(RECEIVED, user, metadata['operator'])
-    metadata['optic_in_pool'] += amount
-    metadata['xoptic_supply'] -= RECEIVED
-    metadata['xoptic_ratio'] = metadata['optic_in_pool'] / metadata['xoptic_supply']
-    metadata['optic_staked'] += amount
+    contractdata['optic_in_pool'] += amount
+    contractdata['xoptic_supply'] -= RECEIVED
+    metadata['xoptic_ratio'] = contractdata['optic_in_pool'] / contractdata['xoptic_supply']
+    contractdata['optic_staked'] += amount
     metadata['xoptic_staked'] += RECEIVED
     S[user, 'xoptic'] += RECEIVED
     return RECEIVED
@@ -118,12 +122,12 @@ def unstake(amount: float):
     user = ctx.caller
     assert amount > 0, 'You must withdrawal something.'
     assert xOPTIC[user] >= amount, 'Not enough coins to withdrawal!'
-    OPTIC_OUT = amount / metadata['xoptic_supply'] * metadata['optic_in_pool']
+    OPTIC_OUT = amount / contractdata['xoptic_supply'] * contractdata['optic_in_pool']
     con_xoptic_lst001.transfer_from(amount, metadata['operator'], user)
-    metadata['optic_in_pool'] -= OPTIC_OUT
+    contractdata['optic_in_pool'] -= OPTIC_OUT
     metadata['xoptic_burned'] += amount
-    metadata['xoptic_ratio'] = metadata['optic_in_pool'] / metadata['xoptic_supply']
-    metadata['optic_staked'] -= OPTIC_OUT
+    metadata['xoptic_ratio'] = contractdata['optic_in_pool'] / contractdata['xoptic_supply']
+    contractdata['optic_staked'] -= OPTIC_OUT
     metadata['xoptic_staked'] -= amount
     S[user, 'xoptic'] -= amount
     return OPTIC_OUT
@@ -214,7 +218,7 @@ def farm(amount: float):
     con_optic_stau_lst001.transfer_from(amount, metadata['operator'], user)
     if S[user, 'start_farm'] is None:
         S[user, 'start_farm'] = now
-    metadata['stau_farm'] += amount
+    contractdata['stau_farm'] += amount
     S[user, 'farm'] += amount
     return S[user, 'start_farm']
 
@@ -226,7 +230,7 @@ def remove(amount: float):
     assert amount > 0, 'You must withdrawal something.'
     assert S[user, 'farm'] >= amount, 'Not enough coins to withdrawal!'
     con_optic_stau_lst001.transfer_from(amount, user, metadata['operator'])
-    metadata['stau_farm'] -= amount
+    contractdata['stau_farm'] -= amount
     S[user, 'farm'] -= amount
     if S[user, 'farm'] == 0:
         S[user, 'start_farm'] = None
@@ -240,7 +244,7 @@ def pledge(amount: float):
     assert xOPTIC[user] >= amount, 'Not enough coins to pledged!'
     con_xoptic_lst001.transfer_from(amount, metadata['operator'], user)
     MAX_LENS = 0
-    metadata['xoptic_pledge'] += amount
+    contractdata['xoptic_pledge'] += amount
     metadata['xoptic_staked'] -= amount
     S[user, 'xoptic_pledge'] += amount
 
@@ -275,7 +279,7 @@ def unpledge(amount: float):
     assert amount > 0, 'You must unpledged something.'
     assert S[user, 'xoptic_pledge'] >= amount, 'Not enough coins to unpledged!'
     con_xoptic_lst001.transfer_from(amount, user, metadata['operator'])
-    metadata['xoptic_pledge'] -= amount
+    contractdata['xoptic_pledge'] -= amount
     metadata['xoptic_staked'] += amount
     S[user, 'xoptic_pledge'] -= amount
     metadata['total_lens'] -= S[user, 'lens']
@@ -376,24 +380,24 @@ def claim_pledge():
     S[user, 'claimable'] = 0
 
     #stake
-    X_SUPPLY = metadata['xoptic_supply']
-    OPTIC_IN_POOL = metadata['optic_in_pool']
+    X_SUPPLY = contractdata['xoptic_supply']
+    OPTIC_IN_POOL = contractdata['optic_in_pool']
     RECEIVED = amount / (OPTIC_IN_POOL + amount) * X_SUPPLY
 
     #con_optic_lst001.transfer_from(amount, metadata['operator'], user)
     #con_xoptic_lst001.transfer_from(RECEIVED, user, metadata['operator'])
 
-    metadata['optic_in_pool'] += amount
-    metadata['xoptic_supply'] -= RECEIVED
-    metadata['xoptic_ratio'] = metadata['optic_in_pool'] / metadata['xoptic_supply']
-    metadata['optic_staked'] += amount
+    contractdata['optic_in_pool'] += amount
+    contractdata['xoptic_supply'] -= RECEIVED
+    metadata['xoptic_ratio'] = contractdata['optic_in_pool'] / contractdata['xoptic_supply']
+    contractdata['optic_staked'] += amount
     metadata['xoptic_staked'] += RECEIVED
     S[user, 'xoptic'] += RECEIVED
 
     amount = RECEIVED
     #pledge
     MAX_LENS = 0
-    metadata['xoptic_pledge'] += amount
+    contractdata['xoptic_pledge'] += amount
     metadata['xoptic_staked'] -= amount
     S[user, 'xoptic_pledge'] += amount
 
@@ -501,15 +505,32 @@ def fees(amount: float):
 def buyback(amount: float):
     assert ctx.caller == metadata['operator'], 'Only operator can set metadata!'
     metadata['buyback'] += amount
-    metadata['optic_in_pool'] += amount
-    metadata['xoptic_ratio'] = metadata['optic_in_pool'] / metadata[
+    contractdata['optic_in_pool'] += amount
+    metadata['xoptic_ratio'] = contractdata['optic_in_pool'] / metadata[
         'xoptic_supply']
 
+@export
+def propose_metadata(key: str, new_value: Any):
+    assert ctx.caller == metadata['operator'], "only operator can propose changes"
+    multisig_addresses = multisig_data['addresses']
+    proposal_approvals = {}
+    for x in multisig_addresses:
+        proposal_approvals.update({x : 0 })
+    multisig_data['addresses', key] = proposal_approvals
+    metadata_proposal[key] = new_value
 
 @export
-def change_meta(meta: str, value: Any):
-    assert ctx.caller == metadata['operator'], 'Only operator can set metadata!'
+def approve_proposal(key: str, enable:bool):
+    proposal_approvals = multisig_data['addresses', key]
+    call_address = ctx.caller
+    assert call_address in proposal_approvals.keys(), "You are not approved to do this."
+    proposal_approvals[call_address] = int(enable)
+    multisig_data['addresses', key] = proposal_approvals
 
-    #assert meta == 'operator' or  meta == 'fees_wallet' or  meta == 'block_emergency' or   meta == 'rewards_fees' or   meta == 'xoptic_start' or meta == 'initial_close' or meta == 'nft_contract', 'Only operator can set metadata!'
-
-    metadata[meta] = value
+@export
+def implement_proposal(key: str):
+    assert ctx.caller == metadata['operator'], 'Only operator can implement approved proposals'
+    proposal_approvals = multisig_data['addresses', key]
+    approval_check = sum(proposal_approvals.values())
+    assert approval_check >= 2, "This metadata proposal is not aproved."
+    metadata[key] = metadata_proposal[key]
